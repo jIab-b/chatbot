@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Chatbot Web UI</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div id="sidebar-header">
+        <h2>Chats</h2>
+        <button id="newChatBtn">+</button>
+      </div>
+      <ul id="chatList"></ul>
+    </aside>
+    <main id="chatArea">
+      <div id="chatHeader"></div>
+      <div id="chatHistory"></div>
+      <form id="messageForm" autocomplete="off">
+        <input id="messageInput" autocomplete="off" placeholder="Send a message..." required />
+        <button type="submit">➤</button>
+        <button type="button" id="forkBtn" title="Fork">⎇</button>
+      </form>
+    </main>
+  </div>
+  <script>
+let chats = [];
+let currentChat = null;
+
+async function refreshChats(selectedId = null) {
+  const data = await fetch('/api/chats').then(r => r.json());
+  chats = data;
+  const list = document.getElementById('chatList');
+  list.innerHTML = '';
+  for(const chat of chats) {
+    const li = document.createElement('li');
+    li.textContent = chat.title || "Untitled";
+    li.className = (chat.id === (selectedId || currentChat)) ? "active" : "";
+    li.onclick = () => loadChat(chat.id);
+    list.appendChild(li);
+  }
+}
+
+async function loadChat(chatId) {
+  currentChat = chatId;
+  refreshChats(chatId);
+  const chat = await fetch('/api/chats/' + chatId).then(r => r.json());
+  renderChatMessages(chat);
+  updateHeader(chatId);
+}
+function updateHeader(chatId) {
+  document.getElementById('chatHeader').innerHTML = `
+    <span>Chat <span style="color: #bababc;">${chatId.slice(0,8)}</span></span>
+  `;
+}
+function renderChatMessages(messages) {
+  const chatHistory = document.getElementById('chatHistory');
+  chatHistory.innerHTML = '';
+  messages.forEach(msg => {
+    const bubble = document.createElement('div');
+    bubble.className = 'msg ' + msg.role;
+    bubble.innerHTML = `<div class="bubble">${msg.content.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g,'<br>')}</div>`;
+    chatHistory.appendChild(bubble);
+  });
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+document.getElementById('newChatBtn').onclick = async () => {
+  const d = await fetch('/api/chats', {method:'POST'}).then(r=>r.json());
+  await refreshChats(d.id);
+  await loadChat(d.id);
+};
+
+document.getElementById('messageForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const inp = document.getElementById('messageInput');
+  const val = inp.value.trim();
+  if(!val || !currentChat) return;
+  // Optimistic add
+  const chatHistory = document.getElementById('chatHistory');
+  chatHistory.innerHTML += `<div class='msg user'><div class="bubble">${val}</div></div>`;
+  chatHistory.innerHTML += `<div class='msg assistant'><div class="bubble thinking">...</div></div>`;
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+  inp.value = '';
+  // Send
+  const resp = await fetch(`/api/chats/${currentChat}/message`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({message: val})
+  }).then(r=>r.json());
+  await loadChat(currentChat);
+};
+document.getElementById('forkBtn').onclick = async () => {
+  if(!currentChat) return;
+  const d = await fetch(`/api/chats/${currentChat}/fork`, {method:'POST'}).then(r=>r.json());
+  await refreshChats(d.id);
+  await loadChat(d.id);
+};
+
+window.onload = async function() {
+  await refreshChats();
+  if (chats.length) loadChat(chats[0].id);
+  else document.getElementById('newChatBtn').click();
+};
+  </script>
+</body>
+</html>

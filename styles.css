@@ -42,3 +42,15 @@ form#messageForm { display: flex; align-items: center; gap: 0.4em; padding: 15px
 input[type="file"] {background: #242334; border: 1px solid #313144; color: #aac6fA; border-radius: 6px; padding: 8px 10px;}
 .error { color: #f17e7e; margin-top: 0.6em; font-size: 1em; min-height: 20px;}
 @keyframes fadeIn { from { opacity: 0; transform: translateY(32px);} to { opacity: 1; transform: none;} }
+.merge-btn {
+  margin-left: 12px;
+  background: #79efce;
+  color: #212334;
+  font-size: 0.82em;
+  border: none;
+  border-radius: 7px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.merge-btn:hover { background: #25b393; color: #fff;}

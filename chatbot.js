@@ -1,95 +1,139 @@
-let API_KEY = null;
-let chats = [];
-let chatStore = {}; // {id: [{role, content}]}
-let currentChat = null;
+// WARNING: Never commit or deploy production API keys client-side
 
-// -- API KEY HANDLING --
-const overlay = document.getElementById("keyInputOverlay");
-const app = document.getElementById("app");
-document.getElementById("keyFileInput").addEventListener('change', function(evt) {
-  const file = evt.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const content = e.target.result;
-    const match = content.match(/OPENAI_API_KEY\s*=\s*"?([a-zA-Z0-9-_]+)"/i);
-    if (!match) {
-      document.getElementById("keyError").textContent = "Could not parse .key file.";
-      return;
-    }
-    API_KEY = match[1];
-    overlay.style.display = 'none';
-    app.style.display = '';
-    init();
-  };
-  reader.readAsText(file);
-});
+// Chat tree structure
+let chatsById = {};
+let rootChatId = null;
+let currentChatId = null;
 
-// -- CHAT LOGIC --
-function saveChatsToStorage() {
-  localStorage.setItem("cs-chat-chats", JSON.stringify(chats));
-  localStorage.setItem("cs-chat-store", JSON.stringify(chatStore));
+// ---- Chat Tree Functions ----
+
+function saveToStorage() {
+  localStorage.setItem('chatsById', JSON.stringify(chatsById));
+  localStorage.setItem('rootChatId', rootChatId || '');
 }
-function loadChatsFromStorage() {
+
+function loadFromStorage() {
   try {
-    chats = JSON.parse(localStorage.getItem("cs-chat-chats")) || [];
-    chatStore = JSON.parse(localStorage.getItem("cs-chat-store")) || {};
+    chatsById = JSON.parse(localStorage.getItem('chatsById')) || {};
+    rootChatId = localStorage.getItem('rootChatId') || null;
   } catch (e) {
-    chats = [];
-    chatStore = {};
+    chatsById = {};
+    rootChatId = null;
   }
 }
 
-function makeChatTitle(history) {
-  for (const m of history) if (m.role === 'user') return m.content.slice(0, 20);
-  return "Chat";
-}
-// Add a new chat
-function newChat() {
+function newChat(parentId = null) {
   const id = Math.random().toString(36).slice(2,10);
-  chats.push({id, title: "New Chat"});
-  chatStore[id] = [];
-  currentChat = id;
-  saveChatsToStorage();
-  renderChats();
+  const chat = {
+    id,
+    title: "New Chat",
+    parentId,
+    forks: [],
+    messages: [],
+  };
+  chatsById[id] = chat;
+  if (parentId) {
+    chatsById[parentId].forks.push(id);
+  } else {
+    rootChatId = id;
+  }
+  currentChatId = id;
+  saveToStorage();
+  renderSidebar();
   loadChat(id);
 }
-// Fork current chat
+
 function forkChat() {
-  if (!currentChat) return;
-  const old = chatStore[currentChat] || [];
+  if (!currentChatId) return;
+  const parent = chatsById[currentChatId];
   const id = Math.random().toString(36).slice(2,10);
-  chatStore[id] = old.map(m => ({...m})); // Deep copy messages
-  chats.push({id, title: makeChatTitle(chatStore[id]) + " (fork)"});
-  currentChat = id;
-  saveChatsToStorage();
-  renderChats();
+  const chat = {
+    id,
+    title: parent.title + " (fork)",
+    parentId: currentChatId,
+    forks: [],
+    messages: parent.messages.map(m => ({...m}))
+  };
+  chatsById[id] = chat;
+  chatsById[currentChatId].forks.push(id);
+  currentChatId = id;
+  saveToStorage();
+  renderSidebar();
   loadChat(id);
 }
-function renderChats() {
+
+function mergeForkToParent(forkId) {
+  const fork = chatsById[forkId];
+  if (!fork || !fork.parentId) return;
+  const parent = chatsById[fork.parentId];
+  if (!parent) return;
+
+  // Merge messages uniquely
+  const merged = [];
+  let pm = parent.messages, fm = fork.messages;
+  merged.push(...pm);
+  for (const m of fm) {
+    if (!pm.some(mm => mm.role === m.role && mm.content === m.content))
+      merged.push(m);
+  }
+  parent.messages = merged;
+  parent.title = parent.title.replace(/ \(merged\)$/,'')+" (merged)";
+
+  // Move any forks of the fork into the parent
+  for (const childId of fork.forks) {
+    chatsById[parent.id].forks.push(childId);
+    chatsById[childId].parentId = parent.id;
+  }
+  parent.forks = parent.forks.filter(fid => fid !== forkId);
+  delete chatsById[forkId];
+  if(currentChatId === forkId) currentChatId = parent.id;
+  saveToStorage();
+  renderSidebar();
+  loadChat(currentChatId);
+}
+
+function renderSidebar() {
   const list = document.getElementById('chatList');
   list.innerHTML = '';
-  for(const chat of chats) {
+  function renderTree(id, depth=0) {
+    const chat = chatsById[id];
     const li = document.createElement('li');
+    li.style.paddingLeft = `${12 + 25*depth}px`;
     li.textContent = chat.title || "Untitled";
-    li.className = chat.id === currentChat ? "active" : "";
-    li.onclick = () => loadChat(chat.id);
+    li.className = (id === currentChatId ? "active" : "");
+    li.onclick = () => loadChat(id);
     list.appendChild(li);
+
+    // If not root and is a fork, show merge button
+    if (chat.parentId) {
+      const mergeBtn = document.createElement('button');
+      mergeBtn.textContent = "Merge";
+      mergeBtn.className = "merge-btn";
+      mergeBtn.title = "Merge this fork with its parent";
+      mergeBtn.onclick = (ev) => { ev.stopPropagation(); mergeForkToParent(id); };
+      li.appendChild(mergeBtn);
+    }
+
+    for (const childId of chat.forks) {
+      renderTree(childId, depth+1);
+    }
   }
+  if (rootChatId) renderTree(rootChatId);
 }
 function loadChat(id) {
-  currentChat = id;
-  renderChats();
+  currentChatId = id;
+  renderSidebar();
   renderChatMessages();
   updateHeader(id);
 }
 function updateHeader(id) {
-  document.getElementById('chatHeader').innerHTML = id ? `<span>Chat <span style="color:#adcdfe;">${id.slice(0,8)}</span></span>` : '';
+  document.getElementById('chatHeader').innerHTML = id
+    ? `<span>Chat <span style="color: #adcdfe;">${id.slice(0,8)}</span></span>` : '';
 }
 function renderChatMessages() {
   const chatHistory = document.getElementById('chatHistory');
   chatHistory.innerHTML = '';
-  const messages = chatStore[currentChat] || [];
+  const messages = chatsById[currentChatId]?.messages || [];
   messages.forEach(msg => {
     const bubble = document.createElement('div');
     bubble.className = 'msg ' + msg.role;
@@ -99,31 +143,29 @@ function renderChatMessages() {
   chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
-document.getElementById('newChatBtn').onclick = newChat;
+document.getElementById('newChatBtn').onclick = () => newChat(null);
 document.getElementById('forkBtn').onclick = forkChat;
 
 document.getElementById('messageForm').onsubmit = async (e) => {
   e.preventDefault();
   const inp = document.getElementById('messageInput');
   const val = inp.value.trim();
-  if(!val || !currentChat) return;
-  chatStore[currentChat].push({role:"user", content:val});
+  if(!val || !currentChatId) return;
+  chatsById[currentChatId].messages.push({role:"user", content:val});
   renderChatMessages();
   inp.value = '';
-  // "typing..." placeholder
-  chatStore[currentChat].push({role:"assistant", content:"..."});
+  chatsById[currentChatId].messages.push({role:"assistant", content:"..."});
   renderChatMessages();
-  saveChatsToStorage();
-  // -- AI API CALL --
-  const reply = await fetchChatCompletion(chatStore[currentChat].slice(0,-1)); // don't send the '...' as context
-  chatStore[currentChat][chatStore[currentChat].length-1].content = reply;
-  // Update chat title on first user message
-  if(chatStore[currentChat].length==2) {
-    chats.find(c => c.id === currentChat).title = val.slice(0,20);
+  saveToStorage();
+
+  const reply = await fetchChatCompletion(chatsById[currentChatId].messages.slice(0,-1));
+  chatsById[currentChatId].messages[chatsById[currentChatId].messages.length-1].content = reply;
+  if(chatsById[currentChatId].messages.length<=2) {
+    chatsById[currentChatId].title = val.slice(0,24);
   }
-  renderChats();
+  saveToStorage();
+  renderSidebar();
   renderChatMessages();
-  saveChatsToStorage();
 };
 
 async function fetchChatCompletion(messages) {
@@ -147,10 +189,12 @@ async function fetchChatCompletion(messages) {
     return "[Error: "+e+"]";
   }
 }
-// --- INIT ---
+
+// ---- INIT ----
 function init() {
-  loadChatsFromStorage();
-  renderChats();
-  if(chats.length) loadChat(chats[0].id);
-  else newChat();
+  loadFromStorage();
+  if(!rootChatId) newChat(null);
+  renderSidebar();
+  if(currentChatId) loadChat(currentChatId);
 }
+init();

@@ -7,15 +7,8 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="keyInputOverlay" class="overlay">
-    <div class="overlay-box">
-      <h2>Load your API key</h2>
-      <p>Select your <code>.key</code> file (format: <code>OPENAI_API_KEY="sk-..."</code>)</p>
-      <input type="file" id="keyFileInput" accept=".key,text/plain" />
-      <span id="keyError" class="error"></span>
-    </div>
-  </div>
-  <div id="app" class="container" style="display:none;">
+  <div id="app" class="container">
+    <!-- Sidebar -->
     <aside id="sidebar">
       <div class="sidebar-header">
         <h2>Chats</h2>
@@ -23,6 +16,8 @@
       </div>
       <ul id="chatList"></ul>
     </aside>
+    
+    <!-- Main Chat Area -->
     <main id="chatArea">
       <div id="chatHeader"></div>
       <div id="chatHistory"></div>

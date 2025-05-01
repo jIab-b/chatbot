@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Client-side AI Chatbot</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="keyInputOverlay" class="overlay">
+    <div class="overlay-box">
+      <h2>Load your API key</h2>
+      <p>Select your <code>.key</code> file (format: <code>OPENAI_API_KEY="sk-..."</code>)</p>
+      <input type="file" id="keyFileInput" accept=".key,text/plain" />
+      <span id="keyError" class="error"></span>
+    </div>
+  </div>
+  <div id="app" class="container" style="display:none;">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <h2>Chats</h2>
+        <button id="newChatBtn">+</button>
+      </div>
+      <ul id="chatList"></ul>
+    </aside>
+    <main id="chatArea">
+      <div id="chatHeader"></div>
+      <div id="chatHistory"></div>
+      <form id="messageForm" autocomplete="off">
+        <input id="messageInput" autocomplete="off" placeholder="Send a message..." required />
+        <button type="submit">➤</button>
+        <button type="button" id="forkBtn" title="Fork">⎇</button>
+      </form>
+    </main>
+  </div>
+  <script src="chatbot.js"></script>
+</body>
+</html>
